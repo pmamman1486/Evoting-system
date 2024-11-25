@@ -3,8 +3,13 @@
 
 This project implements a Decentralized Voting System using **Clarinet** and **Clarity**. Participants stake tokens to vote on community proposals. The system includes mechanisms for proposal creation, submission deadlines, token-based voting, and rewards/refunds for participants. Real-world applications for this project include DAO governance, community funding decisions, or university elections.
 
+![Feature Demo](./images/ehome.png)
+
 ## Key Features
 - **Proposal Creation**: Participants can submit proposals.
+
+![Feature Demo](./images/eproposal.png)
+
 - **Submission Deadlines**: Deadlines are enforced for proposal submission and voting.
 - **Token-Staked Voting**: Votes are tied to token stakes to reflect the participant’s commitment.
 - **Rewards and Refunds**: Participants receive rewards or refunds after voting.
