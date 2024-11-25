@@ -118,5 +118,5 @@ We encourage collaborative contributions. Please follow these guidelines:
 - University Elections
 
 ## License
-This project is licensed under the MIT License.
+This project is licensed under the MIT License..
 
