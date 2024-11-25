@@ -6,57 +6,18 @@ import { WalletConnectButton } from './components/wallet-connect-button.jsx';
 import { UserCard } from './components/user-card.jsx';
 import { Logo } from './components/ustx-logo.jsx';
 import { NetworkToggle } from './components/network-toggle.jsx';
+import HomePage from './pages/HomePage.jsx';
+import CreateProposalPage from './pages/CreateProposalPage.jsx';
+import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 
 function Contents() {
   return (
     <>
-      <div className={'logos'}>
-        <a
-          href="https://micro-stacks.dev"
-          target="_blank"
-          className={'micro-stacks-logo'}
-        >
-          <Logo
-            size={84}
-            className="logo"
-          />
-        </a>
-        <a
-          href="https://vitejs.dev"
-          target="_blank"
-        >
-          <img
-            src="/vite.svg"
-            className="logo"
-            alt="Vite logo"
-          />
-        </a>
-        <a
-          href="https://reactjs.org"
-          target="_blank"
-        >
-          <img
-            src={reactLogo}
-            className="logo react"
-            alt="React logo"
-          />
-        </a>
-      </div>
-      <h1>micro-stacks + Vite + React</h1>
       <div class="card">
         <UserCard />
         <WalletConnectButton />
         <NetworkToggle />
-        <p
-          style={{
-            display: 'block',
-            marginTop: '40px',
-          }}
-        >
-          Edit <code>src/app.jsx</code> and save to test HMR
-        </p>
       </div>
-      <p class="read-the-docs">Click on the micro-stacks, Vite, and React logos to learn more</p>
     </>
   );
 }
@@ -64,10 +25,24 @@ function Contents() {
 export default function App() {
   return (
     <MicroStacks.ClientProvider
-      appName={'React + micro-stacks'}
+      appName={'Evoting System'}
       appIconUrl={reactLogo}
     >
-      <Contents />
+      {/* <Contents /> */}
+      <Router>
+        <Routes>
+          <Route
+            path="/"
+            element={<HomePage />}
+          />
+          <Route
+            path="/create-proposal"
+            element={<CreateProposalPage />}
+          />
+
+          {/* Add other pages here */}
+        </Routes>
+      </Router>
     </MicroStacks.ClientProvider>
   );
 }
