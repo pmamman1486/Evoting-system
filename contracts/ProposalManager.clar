@@ -120,3 +120,71 @@
 
 (define-read-only (get-min-proposal-duration)
   (ok (var-get min-proposal-duration)))
+
+  (define-map delegations 
+  { delegator: principal } 
+  { delegate: principal })
+
+(define-public (delegate-vote (delegate-to principal))
+  (begin
+    (map-set delegations 
+      { delegator: tx-sender }
+      { delegate: delegate-to })
+    (ok true)))
+
+(define-read-only (get-delegate (delegator principal))
+  (map-get? delegations { delegator: delegator }))
+
+
+(define-constant CATEGORY_GOVERNANCE "governance")
+(define-constant CATEGORY_FUNDING "funding")
+(define-constant CATEGORY_TECHNICAL "technical")
+
+(define-map proposal-categories 
+  { proposal-id: uint } 
+  { category: (string-ascii 20) })
+
+(define-public (set-proposal-category (proposal-id uint) (category (string-ascii 20)))
+  (begin 
+    (map-set proposal-categories 
+      { proposal-id: proposal-id }
+      { category: category })
+    (ok true)))
+
+(define-read-only (get-proposal-category (proposal-id uint))
+  (map-get? proposal-categories { proposal-id: proposal-id }))
+
+
+(define-map locked-proposals 
+  { proposal-id: uint } 
+  { unlock-height: uint })
+
+(define-constant LOCK_PERIOD u1440) ;; 24 hours in blocks
+
+(define-public (lock-proposal (proposal-id uint))
+  (begin
+    (map-set locked-proposals 
+      { proposal-id: proposal-id }
+      { unlock-height: (+ block-height LOCK_PERIOD) })
+    (ok true)))
+
+(define-read-only (is-proposal-unlocked (proposal-id uint))
+  (let ((lock-info (map-get? locked-proposals { proposal-id: proposal-id })))
+    (if (is-none lock-info)
+      true
+      (> block-height (get unlock-height (unwrap-panic lock-info))))))
+
+
+(define-map user-reputation 
+  { user: principal } 
+  { score: uint })
+
+(define-public (add-reputation (user principal) (points uint))
+  (let ((current-score (default-to u0 (get score (map-get? user-reputation { user: user })))))
+    (map-set user-reputation 
+      { user: user }
+      { score: (+ current-score points) })
+    (ok true)))
+
+(define-read-only (get-user-reputation (user principal))
+  (default-to u0 (get score (map-get? user-reputation { user: user }))))
