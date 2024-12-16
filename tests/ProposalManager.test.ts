@@ -1,6 +1,7 @@
 import { describe, it, beforeEach, expect } from 'vitest';
 
 // Mock state and functions for the contract logic
+// 
 
 
 let proposals: Record<number, any>;
