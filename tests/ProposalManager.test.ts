@@ -1,7 +1,6 @@
 import { describe, it, beforeEach, expect } from 'vitest';
 
 // Mock state and functions for the contract logic
-// 
 
 
 let proposals: Record<number, any>;
@@ -162,5 +161,128 @@ describe('Proposal Contract', () => {
     expect(() =>
       proposalsIniatiate('Invalid Proposal', invalidDeadline, 100)
     ).toThrow('ERR_INVALID_DEADLINE');
+  });
+});
+
+
+let delegations: Record<string, string>;
+
+beforeEach(() => {
+  delegations = {};
+});
+
+const delegateVote = (delegator: string, delegate: string) => {
+  delegations[delegator] = delegate;
+  return true;
+};
+
+const getDelegate = (delegator: string) => delegations[delegator] || null;
+
+describe('Delegation Manager', () => {
+  it('should delegate vote successfully', () => {
+    const result = delegateVote('user1', 'delegate1');
+    expect(result).toBe(true);
+    expect(getDelegate('user1')).toBe('delegate1');
+  });
+
+  it('should return null for non-existent delegation', () => {
+    expect(getDelegate('unknown')).toBe(null);
+  });
+});
+
+
+
+let proposalCategories: Record<number, string>;
+
+beforeEach(() => {
+  proposalCategories = {};
+});
+
+const setProposalCategory = (proposalId: number, category: string) => {
+  proposalCategories[proposalId] = category;
+  return true;
+};
+
+const getProposalCategory = (proposalId: number) => proposalCategories[proposalId] || null;
+
+describe('Proposal Categories', () => {
+  it('should set category for proposal', () => {
+    const result = setProposalCategory(1, 'governance');
+    expect(result).toBe(true);
+    expect(getProposalCategory(1)).toBe('governance');
+  });
+
+  it('should handle multiple categories', () => {
+    setProposalCategory(1, 'governance');
+    setProposalCategory(2, 'funding');
+    expect(getProposalCategory(1)).toBe('governance');
+    expect(getProposalCategory(2)).toBe('funding');
+  });
+});
+
+
+let lockedProposals: Record<number, number>;
+// let blockHeight: number;
+const LOCK_PERIOD = 1440;
+
+beforeEach(() => {
+  lockedProposals = {};
+  blockHeight = 1000;
+});
+
+const lockProposal = (proposalId: number) => {
+  lockedProposals[proposalId] = blockHeight + LOCK_PERIOD;
+  return true;
+};
+
+const isProposalUnlocked = (proposalId: number) => {
+  const unlockHeight = lockedProposals[proposalId];
+  return !unlockHeight || blockHeight > unlockHeight;
+};
+
+describe('TimeLock Manager', () => {
+  it('should lock proposal successfully', () => {
+    const result = lockProposal(1);
+    expect(result).toBe(true);
+    expect(isProposalUnlocked(1)).toBe(false);
+  });
+
+  it('should unlock proposal after period', () => {
+    lockProposal(1);
+    blockHeight += LOCK_PERIOD + 1;
+    expect(isProposalUnlocked(1)).toBe(true);
+  });
+});
+
+
+
+let userReputation: Record<string, number>;
+
+beforeEach(() => {
+  userReputation = {};
+});
+
+const addReputation = (user: string, points: number) => {
+  userReputation[user] = (userReputation[user] || 0) + points;
+  return true;
+};
+
+const getUserReputation = (user: string) => userReputation[user] || 0;
+
+describe('Reputation Manager', () => {
+  it('should add reputation points', () => {
+    const result = addReputation('user1', 10);
+    expect(result).toBe(true);
+    expect(getUserReputation('user1')).toBe(10);
+  });
+
+  it('should accumulate reputation points', () => {
+    addReputation('user1', 10);
+    addReputation('user1', 5);
+    expect(getUserReputation('user1')).toBe(15);
+  });
+
+  it('should return 0 for new users', () => {
+    expect(getUserReputation('newuser')).toBe(0);
   });
 });
