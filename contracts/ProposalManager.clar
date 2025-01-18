@@ -209,3 +209,22 @@
       }))
     (ok (get total-votes proposal))))
 
+
+;; Add map
+(define-map proposal-tags 
+  { proposal-id: uint }
+  { tags: (list 5 (string-ascii 20)) })
+
+;; Add function
+(define-public (add-proposal-tags (proposal-id uint) (tags (list 5 (string-ascii 20))))
+  (begin
+    (asserts! (is-some (map-get? proposals proposal-id)) ERR_PROPOSAL_NOT_FOUND)
+    (map-set proposal-tags { proposal-id: proposal-id } { tags: tags })
+    (ok true)))
+
+
+;; Add function
+(define-read-only (calculate-vote-weight (base-amount uint) (lock-duration uint))
+  (let ((multiplier (+ u100 (/ lock-duration u100))))  ;; 1% bonus per day locked
+    (/ (* base-amount multiplier) u100)))
+
