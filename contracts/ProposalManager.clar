@@ -279,3 +279,14 @@
       { milestones: (unwrap! (as-max-len? (append current-milestones milestone) u5) ERR_LIST_FULL) })
     (ok true)))
 
+
+(define-map voter-stats
+  { voter: principal }
+  { proposals-voted: uint })
+
+(define-public (track-participation (voter principal))
+  (let ((current-count (default-to u0 (get proposals-voted (map-get? voter-stats { voter: voter })))))
+    (map-set voter-stats
+      { voter: voter }
+      { proposals-voted: (+ current-count u1) })
+    (ok true)))
