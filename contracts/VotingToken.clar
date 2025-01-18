@@ -91,3 +91,17 @@
 
 (define-public (get-token-owner)
   (ok (var-get token-owner))) ;; Wrap the return value in an ok response
+
+
+;; Map to store user lock durations
+(define-map user-locks principal uint)
+
+;; Get the lock duration for a user
+(define-read-only (get-lock-duration (user principal))
+    (default-to u0 (map-get? user-locks user))
+)
+
+;; Set a lock duration 
+(define-public (set-lock-duration (duration uint))
+    (ok (map-set user-locks tx-sender duration))
+)
