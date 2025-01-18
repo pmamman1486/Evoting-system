@@ -228,3 +228,14 @@
   (let ((multiplier (+ u100 (/ lock-duration u100))))  ;; 1% bonus per day locked
     (/ (* base-amount multiplier) u100)))
 
+
+(define-public (cancel-proposal (proposal-id uint))
+  (let (
+    (proposal (unwrap! (map-get? proposals proposal-id) ERR_PROPOSAL_NOT_FOUND))
+  )
+    (asserts! (is-eq tx-sender (var-get token-owner)) ERR_UNAUTHORIZED)
+    (asserts! (is-eq (get status proposal) "active") ERR_VOTING_CLOSED)
+    (map-set proposals proposal-id 
+      (merge proposal { status: "cancelled" }))
+    (ok true)))
+
