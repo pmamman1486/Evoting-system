@@ -267,3 +267,15 @@
       { history: (unwrap! (as-max-len? (append current-history delegate-to) u10) ERR_LIST_FULL) })
     (ok true)))
 
+
+(define-map proposal-milestones 
+  { proposal-id: uint }
+  { milestones: (list 5 (string-utf8 100)) })
+
+(define-public (add-milestone (proposal-id uint) (milestone (string-utf8 100)))
+  (let ((current-milestones (default-to (list) (get milestones (map-get? proposal-milestones { proposal-id: proposal-id })))))
+    (map-set proposal-milestones
+      { proposal-id: proposal-id }
+      { milestones: (unwrap! (as-max-len? (append current-milestones milestone) u5) ERR_LIST_FULL) })
+    (ok true)))
+
