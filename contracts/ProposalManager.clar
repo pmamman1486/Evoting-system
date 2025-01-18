@@ -259,3 +259,11 @@
   (define-constant ERR_LIST_FULL (err u109))
 
 
+
+(define-public (track-delegation (delegate-to principal))
+  (let ((current-history (default-to (list) (get history (map-get? delegation-history { delegator: tx-sender })))))
+    (map-set delegation-history
+      { delegator: tx-sender }
+      { history: (unwrap! (as-max-len? (append current-history delegate-to) u10) ERR_LIST_FULL) })
+    (ok true)))
+
