@@ -239,3 +239,23 @@
       (merge proposal { status: "cancelled" }))
     (ok true)))
 
+
+(define-map proposal-comments 
+  { proposal-id: uint, commenter: principal } 
+  { comment: (string-utf8 200) })
+
+(define-public (add-comment (proposal-id uint) (comment (string-utf8 200)))
+  (begin
+    (map-set proposal-comments 
+      { proposal-id: proposal-id, commenter: tx-sender }
+      { comment: comment })
+    (ok true)))
+
+
+(define-map delegation-history
+  { delegator: principal }
+  { history: (list 10 principal) })
+
+  (define-constant ERR_LIST_FULL (err u109))
+
+
