@@ -74,17 +74,17 @@
       }))
     (ok amount)))
 
-(define-public (finalize-vote (proposal-id uint))
-  (let (
-    (proposal (unwrap! (map-get? proposals proposal-id) ERR_PROPOSAL_NOT_FOUND))
-  )
-    (asserts! (> block-height (get deadline proposal)) ERR_PROPOSAL_ACTIVE)
-    (asserts! (is-eq (get status proposal) "active") ERR_VOTING_CLOSED)
-    (map-set proposals proposal-id 
-      (merge proposal { 
-        status: (if (> (get for-votes proposal) (get against-votes proposal)) "passed" "rejected")
-      }))
-    (ok (get total-votes proposal))))
+;; (define-public (finalize-votee (proposal-id uint))
+;;   (let (
+;;     (proposal (unwrap! (map-get? proposals proposal-id) ERR_PROPOSAL_NOT_FOUND))
+;;   )
+;;     (asserts! (> block-height (get deadline proposal)) ERR_PROPOSAL_ACTIVE)
+;;     (asserts! (is-eq (get status proposal) "active") ERR_VOTING_CLOSED)
+;;     (map-set proposals proposal-id 
+;;       (merge proposal { 
+;;         status: (if (> (get for-votes proposal) (get against-votes proposal)) "passed" "rejected")
+;;       }))
+;;     (ok (get total-votes proposal))))
 
 (define-public (claim-reward (proposal-id uint))
   (let (
@@ -188,3 +188,24 @@
 
 (define-read-only (get-user-reputation (user principal))
   (default-to u0 (get score (map-get? user-reputation { user: user }))))
+
+
+;; Add constant
+(define-constant MINIMUM_QUORUM_PERCENTAGE u10) ;; 10% of total staked tokens
+
+;; Modify finalize-vote function
+(define-public (finalize-vote (proposal-id uint))
+  (let (
+    (proposal (unwrap! (map-get? proposals proposal-id) ERR_PROPOSAL_NOT_FOUND))
+    (total-staked (unwrap! (contract-call? .VotingToken get-staked-balance tx-sender) (err u0)))
+    (quorum-met (>= (* (get total-votes proposal) u100) (* total-staked MINIMUM_QUORUM_PERCENTAGE)))
+  )
+    (asserts! (> block-height (get deadline proposal)) ERR_PROPOSAL_ACTIVE)
+    (asserts! (is-eq (get status proposal) "active") ERR_VOTING_CLOSED)
+    (asserts! quorum-met (err u4))
+    (map-set proposals proposal-id 
+      (merge proposal { 
+        status: (if (> (get for-votes proposal) (get against-votes proposal)) "passed" "rejected")
+      }))
+    (ok (get total-votes proposal))))
+
