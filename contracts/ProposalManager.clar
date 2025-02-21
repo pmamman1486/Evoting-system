@@ -74,17 +74,17 @@
       }))
     (ok amount)))
 
-(define-public (finalize-vote (proposal-id uint))
-  (let (
-    (proposal (unwrap! (map-get? proposals proposal-id) ERR_PROPOSAL_NOT_FOUND))
-  )
-    (asserts! (> block-height (get deadline proposal)) ERR_PROPOSAL_ACTIVE)
-    (asserts! (is-eq (get status proposal) "active") ERR_VOTING_CLOSED)
-    (map-set proposals proposal-id 
-      (merge proposal { 
-        status: (if (> (get for-votes proposal) (get against-votes proposal)) "passed" "rejected")
-      }))
-    (ok (get total-votes proposal))))
+;; (define-public (finalize-votee (proposal-id uint))
+;;   (let (
+;;     (proposal (unwrap! (map-get? proposals proposal-id) ERR_PROPOSAL_NOT_FOUND))
+;;   )
+;;     (asserts! (> block-height (get deadline proposal)) ERR_PROPOSAL_ACTIVE)
+;;     (asserts! (is-eq (get status proposal) "active") ERR_VOTING_CLOSED)
+;;     (map-set proposals proposal-id 
+;;       (merge proposal { 
+;;         status: (if (> (get for-votes proposal) (get against-votes proposal)) "passed" "rejected")
+;;       }))
+;;     (ok (get total-votes proposal))))
 
 (define-public (claim-reward (proposal-id uint))
   (let (
@@ -188,3 +188,105 @@
 
 (define-read-only (get-user-reputation (user principal))
   (default-to u0 (get score (map-get? user-reputation { user: user }))))
+
+
+;; Add constant
+(define-constant MINIMUM_QUORUM_PERCENTAGE u10) ;; 10% of total staked tokens
+
+;; Modify finalize-vote function
+(define-public (finalize-vote (proposal-id uint))
+  (let (
+    (proposal (unwrap! (map-get? proposals proposal-id) ERR_PROPOSAL_NOT_FOUND))
+    (total-staked (unwrap! (contract-call? .VotingToken get-staked-balance tx-sender) (err u0)))
+    (quorum-met (>= (* (get total-votes proposal) u100) (* total-staked MINIMUM_QUORUM_PERCENTAGE)))
+  )
+    (asserts! (> block-height (get deadline proposal)) ERR_PROPOSAL_ACTIVE)
+    (asserts! (is-eq (get status proposal) "active") ERR_VOTING_CLOSED)
+    (asserts! quorum-met (err u4))
+    (map-set proposals proposal-id 
+      (merge proposal { 
+        status: (if (> (get for-votes proposal) (get against-votes proposal)) "passed" "rejected")
+      }))
+    (ok (get total-votes proposal))))
+
+
+;; Add map
+(define-map proposal-tags 
+  { proposal-id: uint }
+  { tags: (list 5 (string-ascii 20)) })
+
+;; Add function
+(define-public (add-proposal-tags (proposal-id uint) (tags (list 5 (string-ascii 20))))
+  (begin
+    (asserts! (is-some (map-get? proposals proposal-id)) ERR_PROPOSAL_NOT_FOUND)
+    (map-set proposal-tags { proposal-id: proposal-id } { tags: tags })
+    (ok true)))
+
+
+;; Add function
+(define-read-only (calculate-vote-weight (base-amount uint) (lock-duration uint))
+  (let ((multiplier (+ u100 (/ lock-duration u100))))  ;; 1% bonus per day locked
+    (/ (* base-amount multiplier) u100)))
+
+
+(define-public (cancel-proposal (proposal-id uint))
+  (let (
+    (proposal (unwrap! (map-get? proposals proposal-id) ERR_PROPOSAL_NOT_FOUND))
+  )
+    (asserts! (is-eq tx-sender (var-get token-owner)) ERR_UNAUTHORIZED)
+    (asserts! (is-eq (get status proposal) "active") ERR_VOTING_CLOSED)
+    (map-set proposals proposal-id 
+      (merge proposal { status: "cancelled" }))
+    (ok true)))
+
+
+(define-map proposal-comments 
+  { proposal-id: uint, commenter: principal } 
+  { comment: (string-utf8 200) })
+
+(define-public (add-comment (proposal-id uint) (comment (string-utf8 200)))
+  (begin
+    (map-set proposal-comments 
+      { proposal-id: proposal-id, commenter: tx-sender }
+      { comment: comment })
+    (ok true)))
+
+
+(define-map delegation-history
+  { delegator: principal }
+  { history: (list 10 principal) })
+
+  (define-constant ERR_LIST_FULL (err u109))
+
+
+
+(define-public (track-delegation (delegate-to principal))
+  (let ((current-history (default-to (list) (get history (map-get? delegation-history { delegator: tx-sender })))))
+    (map-set delegation-history
+      { delegator: tx-sender }
+      { history: (unwrap! (as-max-len? (append current-history delegate-to) u10) ERR_LIST_FULL) })
+    (ok true)))
+
+
+(define-map proposal-milestones 
+  { proposal-id: uint }
+  { milestones: (list 5 (string-utf8 100)) })
+
+(define-public (add-milestone (proposal-id uint) (milestone (string-utf8 100)))
+  (let ((current-milestones (default-to (list) (get milestones (map-get? proposal-milestones { proposal-id: proposal-id })))))
+    (map-set proposal-milestones
+      { proposal-id: proposal-id }
+      { milestones: (unwrap! (as-max-len? (append current-milestones milestone) u5) ERR_LIST_FULL) })
+    (ok true)))
+
+
+(define-map voter-stats
+  { voter: principal }
+  { proposals-voted: uint })
+
+(define-public (track-participation (voter principal))
+  (let ((current-count (default-to u0 (get proposals-voted (map-get? voter-stats { voter: voter })))))
+    (map-set voter-stats
+      { voter: voter }
+      { proposals-voted: (+ current-count u1) })
+    (ok true)))

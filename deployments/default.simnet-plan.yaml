@@ -52,11 +52,11 @@ plan:
         - emulated-contract-publish:
             contract-name: VotingToken
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
-            path: contracts/VotingToken.clar
+            path: "contracts\\VotingToken.clar"
             clarity-version: 2
         - emulated-contract-publish:
             contract-name: ProposalManager
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
-            path: contracts/ProposalManager.clar
+            path: "contracts\\ProposalManager.clar"
             clarity-version: 2
       epoch: "2.5"
