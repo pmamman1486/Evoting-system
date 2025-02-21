@@ -290,3 +290,155 @@
       { voter: voter }
       { proposals-voted: (+ current-count u1) })
     (ok true)))
+
+
+
+(define-map proposal-amendments
+  { proposal-id: uint, amendment-id: uint }
+  { 
+    description: (string-utf8 500),
+    proposer: principal,
+    timestamp: uint
+  })
+
+(define-public (add-amendment (proposal-id uint) (description (string-utf8 500)))
+  (let ((proposal (unwrap! (map-get? proposals proposal-id) ERR_PROPOSAL_NOT_FOUND)))
+    (asserts! (is-eq (get status proposal) "active") ERR_VOTING_CLOSED)
+    (map-set proposal-amendments 
+      { proposal-id: proposal-id, amendment-id: block-height }
+      { 
+        description: description,
+        proposer: tx-sender,
+        timestamp: block-height
+      })
+    (ok true)))
+
+
+
+(define-map timed-delegations
+  { delegator: principal }
+  { 
+    delegate: principal,
+    expiry: uint
+  })
+
+(define-public (delegate-with-timeout (delegate-to principal) (duration uint))
+  (let ((expiry (+ block-height duration)))
+    (map-set timed-delegations
+      { delegator: tx-sender }
+      { 
+        delegate: delegate-to,
+        expiry: expiry
+      })
+    (ok true)))
+
+
+
+(define-constant EMERGENCY_THRESHOLD u75) ;; 75% consensus needed
+
+(define-map emergency-votes
+  { proposal-id: uint, voter: principal }
+  { vote: bool })
+
+(define-public (emergency-cancel-vote (proposal-id uint))
+  (let ((proposal (unwrap! (map-get? proposals proposal-id) ERR_PROPOSAL_NOT_FOUND)))
+    (asserts! (is-eq (get status proposal) "active") ERR_VOTING_CLOSED)
+    (map-set emergency-votes
+      { proposal-id: proposal-id, voter: tx-sender }
+      { vote: true })
+    (ok true)))
+
+
+
+
+(define-map discussion-threads
+  { proposal-id: uint, message-id: uint }
+  { 
+    author: principal,
+    message: (string-utf8 200),
+    timestamp: uint,
+    replies: (list 5 uint)
+  })
+
+(define-data-var next-message-id uint u1)
+
+(define-public (post-discussion (proposal-id uint) (message (string-utf8 200)))
+  (let ((msg-id (var-get next-message-id)))
+    (map-set discussion-threads
+      { proposal-id: proposal-id, message-id: msg-id }
+      { 
+        author: tx-sender,
+        message: message,
+        timestamp: block-height,
+        replies: (list)
+      })
+    (var-set next-message-id (+ msg-id u1))
+    (ok msg-id)))
+
+
+
+
+(define-map token-hold-duration
+  { holder: principal }
+  { start-block: uint })
+
+(define-read-only (calculate-vote-weight-with-hold (amount uint))
+  (let ((hold-info (default-to { start-block: block-height } 
+                    (map-get? token-hold-duration { holder: tx-sender }))))
+    (let ((hold-duration (- block-height (get start-block hold-info))))
+      (* amount (+ u100 (/ hold-duration u1000))))))
+
+
+
+
+(define-map category-requirements
+  { category: (string-ascii 20) }
+  { min-stake: uint })
+
+(define-public (set-category-requirement (category (string-ascii 20)) (min-stake uint))
+  (begin
+    (asserts! (is-eq tx-sender (var-get token-owner)) ERR_UNAUTHORIZED)
+    (map-set category-requirements
+      { category: category }
+      { min-stake: min-stake })
+    (ok true)))
+
+
+
+
+(define-map proposal-endorsements
+  { proposal-id: uint, endorser: principal }
+  { weight: uint })
+
+(define-public (endorse-proposal (proposal-id uint) (weight uint))
+  (begin
+    (asserts! (is-some (map-get? proposals proposal-id)) ERR_PROPOSAL_NOT_FOUND)
+    (map-set proposal-endorsements
+      { proposal-id: proposal-id, endorser: tx-sender }
+      { weight: weight })
+    (ok true)))
+
+
+
+
+(define-map execution-milestones
+  { proposal-id: uint }
+  { 
+    start-time: uint,
+    end-time: uint,
+    status: (string-ascii 20),
+    completion-percentage: uint
+  })
+
+(define-public (update-execution-status (proposal-id uint) (completion uint))
+  (begin
+    (asserts! (is-eq tx-sender (var-get token-owner)) ERR_UNAUTHORIZED)
+    (map-set execution-milestones
+      { proposal-id: proposal-id }
+      { 
+        start-time: block-height,
+        end-time: (+ block-height u1440),
+        status: "in-progress",
+        completion-percentage: completion
+      })
+    (ok true)))
