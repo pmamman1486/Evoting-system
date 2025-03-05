@@ -62,10 +62,8 @@
     (asserts! (>= staked-balance amount) ERR_INSUFFICIENT_STAKE)
     (asserts! (is-none existing-vote) ERR_ALREADY_VOTED)
     
-    ;; Record the vote
     (map-set votes { proposal-id: proposal-id, voter: tx-sender } { weight: amount, vote: vote-for })
     
-    ;; Update the proposal votes
     (map-set proposals proposal-id 
       (merge proposal { 
         total-votes: (+ (get total-votes proposal) amount),
@@ -73,18 +71,6 @@
         against-votes: (if (not vote-for) (+ (get against-votes proposal) amount) (get against-votes proposal))
       }))
     (ok amount)))
-
-;; (define-public (finalize-votee (proposal-id uint))
-;;   (let (
-;;     (proposal (unwrap! (map-get? proposals proposal-id) ERR_PROPOSAL_NOT_FOUND))
-;;   )
-;;     (asserts! (> block-height (get deadline proposal)) ERR_PROPOSAL_ACTIVE)
-;;     (asserts! (is-eq (get status proposal) "active") ERR_VOTING_CLOSED)
-;;     (map-set proposals proposal-id 
-;;       (merge proposal { 
-;;         status: (if (> (get for-votes proposal) (get against-votes proposal)) "passed" "rejected")
-;;       }))
-;;     (ok (get total-votes proposal))))
 
 (define-public (claim-reward (proposal-id uint))
   (let (
@@ -440,5 +426,138 @@
         end-time: (+ block-height u1440),
         status: "in-progress",
         completion-percentage: completion
+      })
+    (ok true)))
+
+
+;; Add map for proposal keywords
+(define-map proposal-keywords 
+  { proposal-id: uint }
+  { keywords: (list 10 (string-ascii 20)) })
+
+(define-public (add-proposal-keywords (proposal-id uint) (keywords (list 10 (string-ascii 20))))
+  (begin
+    (asserts! (is-some (map-get? proposals proposal-id)) ERR_PROPOSAL_NOT_FOUND)
+    (map-set proposal-keywords { proposal-id: proposal-id } { keywords: keywords })
+    (ok true)))
+
+
+
+(define-data-var next-template-id uint u1)
+
+(define-map proposal-templates
+  { template-id: uint }
+  {
+    name: (string-ascii 50),
+    description: (string-utf8 500),
+    category: (string-ascii 20),
+    default-duration: uint
+  })
+
+(define-public (create-template 
+    (name (string-ascii 50)) 
+    (description (string-utf8 500))
+    (category (string-ascii 20))
+    (duration uint))
+  (let ((template-id (var-get next-template-id)))
+    (map-set proposal-templates
+      { template-id: template-id }
+      {
+        name: name,
+        description: description,
+        category: category,
+        default-duration: duration
+      })
+    (ok template-id)))
+
+
+(define-map proposal-budgets
+  { proposal-id: uint }
+  {
+    requested-amount: uint,
+    released-amount: uint,
+    milestones: (list 5 uint)
+  })
+
+(define-public (set-proposal-budget (proposal-id uint) (amount uint))
+  (begin
+    (asserts! (is-some (map-get? proposals proposal-id)) ERR_PROPOSAL_NOT_FOUND)
+    (map-set proposal-budgets
+      { proposal-id: proposal-id }
+      {
+        requested-amount: amount,
+        released-amount: u0,
+        milestones: (list)
+      })
+    (ok true)))
+
+
+
+(define-map voter-analytics
+  { voter: principal }
+  {
+    proposals-created: uint,
+    votes-cast: uint,
+    stake-history: (list 10 uint),
+    last-active: uint
+  })
+
+(define-public (update-voter-analytics (action (string-ascii 20)))
+  (let ((current-stats (default-to 
+    { proposals-created: u0, votes-cast: u0, stake-history: (list), last-active: u0 }
+    (map-get? voter-analytics { voter: tx-sender }))))
+    (map-set voter-analytics
+      { voter: tx-sender }
+      (merge current-stats { last-active: block-height }))
+    (ok true)))
+
+
+(define-map proposal-dependencies
+  { proposal-id: uint }
+  { dependent-on: (list 5 uint) })
+
+(define-public (add-proposal-dependency (proposal-id uint) (dependency-id uint))
+  (let ((current-deps (default-to (list) (get dependent-on (map-get? proposal-dependencies { proposal-id: proposal-id })))))
+    (map-set proposal-dependencies
+      { proposal-id: proposal-id }
+      { dependent-on: (unwrap! (as-max-len? (append current-deps dependency-id) u5) ERR_LIST_FULL) })
+    (ok true)))
+
+(define-map scheduled-proposals
+  { block-height: uint }
+  { proposal-ids: (list 10 uint) })
+
+(define-public (schedule-proposal (proposal-id uint) (target-block uint))
+  (let ((scheduled (default-to { proposal-ids: (list) } (map-get? scheduled-proposals { block-height: target-block }))))
+    (map-set scheduled-proposals
+      { block-height: target-block }
+      { proposal-ids: (unwrap! (as-max-len? (append (get proposal-ids scheduled) proposal-id) u10) ERR_LIST_FULL) })
+    (ok true)))
+
+
+(define-map impact-assessments
+  { proposal-id: uint }
+  {
+    technical-score: uint,
+    community-impact: uint,
+    resource-requirements: uint,
+    risk-level: uint
+  })
+
+(define-public (add-impact-assessment 
+    (proposal-id uint)
+    (technical uint)
+    (community uint)
+    (resources uint)
+    (risk uint))
+  (begin
+    (asserts! (is-some (map-get? proposals proposal-id)) ERR_PROPOSAL_NOT_FOUND)
+    (map-set impact-assessments
+      { proposal-id: proposal-id }
+      {
+        technical-score: technical,
+        community-impact: community,
+        resource-requirements: resources,
+        risk-level: risk
       })
     (ok true)))
