@@ -561,3 +561,320 @@
         risk-level: risk
       })
     (ok true)))
+
+
+
+(define-map proposal-versions
+  { proposal-id: uint, version: uint }
+  { 
+    description: (string-utf8 500),
+    timestamp: uint,
+    editor: principal
+  })
+
+(define-map proposal-current-version
+  { proposal-id: uint }
+  { current-version: uint })
+
+(define-public (update-proposal-version (proposal-id uint) (new-description (string-utf8 500)))
+  (let (
+    (proposal (unwrap! (map-get? proposals proposal-id) ERR_PROPOSAL_NOT_FOUND))
+    (current-version (default-to u1 (get current-version (map-get? proposal-current-version { proposal-id: proposal-id }))))
+    (next-version (+ current-version u1))
+  )
+    (asserts! (is-eq (get creator proposal) tx-sender) ERR_UNAUTHORIZED)
+    (asserts! (is-eq (get status proposal) "active") ERR_VOTING_CLOSED)
+    
+    (map-set proposal-versions
+      { proposal-id: proposal-id, version: next-version }
+      { 
+        description: new-description,
+        timestamp: block-height,
+        editor: tx-sender
+      })
+    
+    (map-set proposal-current-version
+      { proposal-id: proposal-id }
+      { current-version: next-version })
+    
+    (map-set proposals proposal-id 
+      (merge proposal { description: new-description }))
+    
+    (ok next-version)))
+
+(define-read-only (get-proposal-version-history (proposal-id uint) (version uint))
+  (map-get? proposal-versions { proposal-id: proposal-id, version: version }))
+
+
+
+(define-map proposal-specific-delegations
+  { proposal-id: uint, delegator: principal }
+  { delegate: principal })
+
+(define-public (delegate-for-proposal (proposal-id uint) (delegate-to principal))
+  (begin
+    (asserts! (is-some (map-get? proposals proposal-id)) ERR_PROPOSAL_NOT_FOUND)
+    (map-set proposal-specific-delegations
+      { proposal-id: proposal-id, delegator: tx-sender }
+      { delegate: delegate-to })
+    (ok true)))
+
+(define-read-only (get-proposal-delegate (proposal-id uint) (delegator principal))
+  (map-get? proposal-specific-delegations { proposal-id: proposal-id, delegator: delegator }))
+
+(define-public (vote-as-delegate (proposal-id uint) (amount uint) (vote-for bool) (delegator principal))
+  (let (
+    (proposal (unwrap! (map-get? proposals proposal-id) ERR_PROPOSAL_NOT_FOUND))
+    (delegation (unwrap! (map-get? proposal-specific-delegations { proposal-id: proposal-id, delegator: delegator }) ERR_UNAUTHORIZED))
+    (staked-balance (unwrap! (contract-call? .VotingToken get-staked-balance delegator) ERR_INSUFFICIENT_STAKE))
+    (existing-vote (map-get? votes { proposal-id: proposal-id, voter: delegator }))
+  )
+    (asserts! (is-eq (get delegate delegation) tx-sender) ERR_UNAUTHORIZED)
+    (asserts! (is-eq (get status proposal) "active") ERR_VOTING_CLOSED)
+    (asserts! (<= block-height (get deadline proposal)) ERR_VOTING_CLOSED)
+    (asserts! (>= staked-balance amount) ERR_INSUFFICIENT_STAKE)
+    (asserts! (is-none existing-vote) ERR_ALREADY_VOTED)
+    
+    (map-set votes { proposal-id: proposal-id, voter: delegator } { weight: amount, vote: vote-for })
+    
+    (map-set proposals proposal-id 
+      (merge proposal { 
+        total-votes: (+ (get total-votes proposal) amount),
+        for-votes: (if vote-for (+ (get for-votes proposal) amount) (get for-votes proposal)),
+        against-votes: (if (not vote-for) (+ (get against-votes proposal) amount) (get against-votes proposal))
+      }))
+    (ok amount)))
+
+
+
+
+(define-constant ERR_TIER_NOT_FOUND (err u110))
+
+(define-map proposal-funding-tiers
+  { proposal-id: uint, tier-id: uint }
+  { 
+    name: (string-ascii 50),
+    description: (string-utf8 200),
+    funding-amount: uint,
+    min-votes: uint,
+    activated: bool
+  })
+
+(define-public (add-funding-tier 
+    (proposal-id uint) 
+    (tier-id uint)
+    (name (string-ascii 50))
+    (description (string-utf8 200))
+    (funding-amount uint)
+    (min-votes uint))
+  (let ((proposal (unwrap! (map-get? proposals proposal-id) ERR_PROPOSAL_NOT_FOUND)))
+    (asserts! (is-eq (get creator proposal) tx-sender) ERR_UNAUTHORIZED)
+    (asserts! (is-eq (get status proposal) "active") ERR_VOTING_CLOSED)
+    
+    (map-set proposal-funding-tiers
+      { proposal-id: proposal-id, tier-id: tier-id }
+      { 
+        name: name,
+        description: description,
+        funding-amount: funding-amount,
+        min-votes: min-votes,
+        activated: false
+      })
+    (ok true)))
+
+(define-public (activate-funding-tier (proposal-id uint) (tier-id uint))
+  (let (
+    (proposal (unwrap! (map-get? proposals proposal-id) ERR_PROPOSAL_NOT_FOUND))
+    (tier (unwrap! (map-get? proposal-funding-tiers { proposal-id: proposal-id, tier-id: tier-id }) ERR_TIER_NOT_FOUND))
+  )
+    (asserts! (is-eq tx-sender (var-get token-owner)) ERR_UNAUTHORIZED)
+    (asserts! (is-eq (get status proposal) "passed") ERR_PROPOSAL_NOT_FINALIZED)
+    (asserts! (>= (get for-votes proposal) (get min-votes tier)) ERR_INSUFFICIENT_STAKE)
+    
+    (map-set proposal-funding-tiers
+      { proposal-id: proposal-id, tier-id: tier-id }
+      (merge tier { activated: true }))
+    (ok true)))
+
+(define-read-only (get-funding-tier (proposal-id uint) (tier-id uint))
+  (map-get? proposal-funding-tiers { proposal-id: proposal-id, tier-id: tier-id }))
+
+
+
+
+(define-constant EARLY_VOTING_BONUS u20) ;; 20% bonus for early voters
+(define-constant LATE_VOTING_PENALTY u10) ;; 10% penalty for late voters
+
+(define-map proposal-voting-periods
+  { proposal-id: uint }
+  { 
+    early-end: uint,
+    main-end: uint,
+    late-end: uint
+  })
+
+(define-public (set-voting-periods 
+    (proposal-id uint) 
+    (early-duration uint)
+    (main-duration uint)
+    (late-duration uint))
+  (let ((proposal (unwrap! (map-get? proposals proposal-id) ERR_PROPOSAL_NOT_FOUND)))
+    (asserts! (is-eq (get creator proposal) tx-sender) ERR_UNAUTHORIZED)
+    (asserts! (is-eq (get status proposal) "active") ERR_VOTING_CLOSED)
+    
+    (map-set proposal-voting-periods
+      { proposal-id: proposal-id }
+      { 
+        early-end: (+ block-height early-duration),
+        main-end: (+ block-height early-duration main-duration),
+        late-end: (+ block-height early-duration main-duration late-duration)
+      })
+    (ok true)))
+
+(define-read-only (calculate-period-adjusted-weight (proposal-id uint) (base-weight uint))
+  (let (
+    (periods (map-get? proposal-voting-periods { proposal-id: proposal-id }))
+  )
+    (if (is-none periods)
+      base-weight
+      (let ((period-info (unwrap-panic periods)))
+        (if (<= block-height (get early-end period-info))
+          (+ base-weight (/ (* base-weight EARLY_VOTING_BONUS) u100))
+          (if (> block-height (get main-end period-info))
+            (- base-weight (/ (* base-weight LATE_VOTING_PENALTY) u100))
+            base-weight))))))
+
+
+(define-map proposal-thresholds
+  { category: (string-ascii 20) }
+  { 
+    quorum-percentage: uint,
+    approval-percentage: uint
+  })
+
+(define-public (set-category-threshold 
+    (category (string-ascii 20)) 
+    (quorum-percentage uint)
+    (approval-percentage uint))
+  (begin
+    (asserts! (is-eq tx-sender (var-get token-owner)) ERR_UNAUTHORIZED)
+    (map-set proposal-thresholds
+      { category: category }
+      { 
+        quorum-percentage: quorum-percentage,
+        approval-percentage: approval-percentage
+      })
+    (ok true)))
+
+(define-read-only (get-category-threshold (category (string-ascii 20)))
+  (default-to 
+    { quorum-percentage: MINIMUM_QUORUM_PERCENTAGE, approval-percentage: u50 }
+    (map-get? proposal-thresholds { category: category })))
+
+(define-public (check-proposal-passed (proposal-id uint))
+  (let (
+    (proposal (unwrap! (map-get? proposals proposal-id) ERR_PROPOSAL_NOT_FOUND))
+    (category-info (unwrap! (map-get? proposal-categories { proposal-id: proposal-id }) ERR_PROPOSAL_NOT_FOUND))
+    (threshold (get-category-threshold (get category category-info)))
+    (total-staked (unwrap! (contract-call? .VotingToken get-total-supply) (err u0)))
+    (quorum-met (>= (* (get total-votes proposal) u100) (* total-staked (get quorum-percentage threshold))))
+    (approval-met (>= (* (get for-votes proposal) u100) (* (get total-votes proposal) (get approval-percentage threshold))))
+  )
+    (ok (and quorum-met approval-met))))
+
+(define-constant ERR_EXECUTION_FAILED (err u111))
+
+(define-map proposal-executions
+  { proposal-id: uint }
+  { 
+    contract-to-call: principal,
+    function-to-call: (string-ascii 128),
+    executed: bool,
+    execution-block: uint
+  })
+
+(define-public (register-proposal-execution 
+    (proposal-id uint) 
+    (contract-to-call principal)
+    (function-to-call (string-ascii 128)))
+  (let ((proposal (unwrap! (map-get? proposals proposal-id) ERR_PROPOSAL_NOT_FOUND)))
+    (asserts! (is-eq (get creator proposal) tx-sender) ERR_UNAUTHORIZED)
+    (asserts! (is-eq (get status proposal) "active") ERR_VOTING_CLOSED)
+    
+    (map-set proposal-executions
+      { proposal-id: proposal-id }
+      { 
+        contract-to-call: contract-to-call,
+        function-to-call: function-to-call,
+        executed: false,
+        execution-block: u0
+      })
+    (ok true)))
+
+(define-public (execute-proposal (proposal-id uint))
+  (let (
+    (proposal (unwrap! (map-get? proposals proposal-id) ERR_PROPOSAL_NOT_FOUND))
+    (execution-info (unwrap! (map-get? proposal-executions { proposal-id: proposal-id }) ERR_PROPOSAL_NOT_FOUND))
+  )
+    (asserts! (is-eq (get status proposal) "passed") ERR_PROPOSAL_NOT_FINALIZED)
+    (asserts! (not (get executed execution-info)) ERR_PROPOSAL_NOT_FOUND)
+    
+    (map-set proposal-executions
+      { proposal-id: proposal-id }
+      (merge execution-info { 
+        executed: true,
+        execution-block: block-height
+      }))
+    (ok true)))
+
+(define-constant ERR_VETO_PERIOD_ENDED (err u112))
+
+(define-map veto-admins
+  { admin: principal }
+  { active: bool })
+
+(define-map vetoed-proposals
+  { proposal-id: uint }
+  { 
+    vetoer: principal,
+    reason: (string-utf8 200),
+    veto-block: uint
+  })
+
+(define-public (add-veto-admin (admin principal))
+  (begin
+    (asserts! (is-eq tx-sender (var-get token-owner)) ERR_UNAUTHORIZED)
+    (map-set veto-admins
+      { admin: admin }
+      { active: true })
+    (ok true)))
+
+(define-public (remove-veto-admin (admin principal))
+  (begin
+    (asserts! (is-eq tx-sender (var-get token-owner)) ERR_UNAUTHORIZED)
+    (map-set veto-admins
+      { admin: admin }
+      { active: false })
+    (ok true)))
+
+(define-public (veto-proposal (proposal-id uint) (reason (string-utf8 200)))
+  (let (
+    (proposal (unwrap! (map-get? proposals proposal-id) ERR_PROPOSAL_NOT_FOUND))
+    (admin-status (unwrap! (map-get? veto-admins { admin: tx-sender }) ERR_UNAUTHORIZED))
+    (veto-deadline (+ (get deadline proposal) u1440)) ;; 24 hours after voting ends
+  )
+    (asserts! (get active admin-status) ERR_UNAUTHORIZED)
+    (asserts! (<= block-height veto-deadline) ERR_VETO_PERIOD_ENDED)
+    
+    (map-set vetoed-proposals
+      { proposal-id: proposal-id }
+      { 
+        vetoer: tx-sender,
+        reason: reason,
+        veto-block: block-height
+      })
+    
+    (map-set proposals proposal-id 
+      (merge proposal { status: "vetoed" }))
+    (ok true)))
+
