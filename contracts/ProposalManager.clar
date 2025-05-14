@@ -878,3 +878,81 @@
       (merge proposal { status: "vetoed" }))
     (ok true)))
 
+(define-constant REWARD_RATE_PER_BLOCK u1)
+(define-constant MIN_STAKE_DURATION u1440)
+
+(define-map proposal-stakes
+  { proposal-id: uint, staker: principal }
+  {
+    amount: uint,
+    start-block: uint,
+    claimed: bool
+  })
+
+(define-public (stake-on-proposal (proposal-id uint) (amount uint))
+  (let (
+    (proposal (unwrap! (map-get? proposals proposal-id) ERR_PROPOSAL_NOT_FOUND))
+  )
+    (asserts! (is-eq (get status proposal) "active") ERR_VOTING_CLOSED)
+    (try! (contract-call? .VotingToken transfer amount tx-sender (as-contract tx-sender) none))
+    
+    (map-set proposal-stakes
+      { proposal-id: proposal-id, staker: tx-sender }
+      {
+        amount: amount,
+        start-block: block-height,
+        claimed: false
+      })
+    (ok true)))
+
+(define-public (claim-stake-rewards (proposal-id uint))
+  (let (
+    (proposal (unwrap! (map-get? proposals proposal-id) ERR_PROPOSAL_NOT_FOUND))
+    (stake-info (unwrap! (map-get? proposal-stakes { proposal-id: proposal-id, staker: tx-sender }) ERR_UNAUTHORIZED))
+  )
+    (asserts! (not (get claimed stake-info)) ERR_ALREADY_VOTED)
+    (asserts! (>= (- block-height (get start-block stake-info)) MIN_STAKE_DURATION) ERR_INSUFFICIENT_STAKE)
+    
+    (let (
+      (duration (- block-height (get start-block stake-info)))
+      (reward (* (get amount stake-info) (* duration REWARD_RATE_PER_BLOCK)))
+    )
+      (try! (contract-call? .VotingToken transfer reward (as-contract tx-sender) tx-sender none))
+      (map-set proposal-stakes
+        { proposal-id: proposal-id, staker: tx-sender }
+        (merge stake-info { claimed: true }))
+      (ok reward))))
+
+
+(define-map governance-snapshots
+  { snapshot-id: uint }
+  {
+    total-proposals: uint,
+    active-proposals: uint,
+    total-voters: uint,
+    total-staked: uint,
+    timestamp: uint
+  })
+
+(define-data-var next-snapshot-id uint u1)
+
+(define-public (create-governance-snapshot)
+  (let (
+    (snapshot-id (var-get next-snapshot-id))
+    (active-count  u0)
+    (total-supply (unwrap! (contract-call? .VotingToken get-total-supply) (err u0)))
+  )
+    (map-set governance-snapshots
+      { snapshot-id: snapshot-id }
+      {
+        total-proposals: (var-get next-proposal-id),
+        active-proposals: active-count,
+        total-voters:   u0,
+        total-staked: total-supply,
+        timestamp: block-height
+      })
+    (var-set next-snapshot-id (+ snapshot-id u1))
+    (ok snapshot-id)))
+(define-read-only (get-governance-snapshot (snapshot-id uint))
+  (map-get? governance-snapshots { snapshot-id: snapshot-id }))
+
