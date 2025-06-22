@@ -5,6 +5,11 @@ authors = []
 telemetry = true
 cache_dir = '.\.cache'
 requirements = []
+[contracts.ProposalBountySystem]
+path = 'contracts/ProposalBountySystem.clar'
+clarity_version = 3
+epoch = 3.1
+
 [contracts.ProposalManager]
 path = 'contracts/ProposalManager.clar'
 clarity_version = 2
