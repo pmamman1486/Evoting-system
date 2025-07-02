@@ -5,10 +5,15 @@ authors = []
 telemetry = true
 cache_dir = '.\.cache'
 requirements = []
+[contracts.MilestoneBountySystem]
+path = 'contracts/MilestoneBountySystem.clar'
+clarity_version = 3
+epoch = 3.0
+
 [contracts.ProposalBountySystem]
 path = 'contracts/ProposalBountySystem.clar'
 clarity_version = 3
-epoch = 3.1
+epoch = 3.0
 
 [contracts.ProposalManager]
 path = 'contracts/ProposalManager.clar'
@@ -19,6 +24,11 @@ epoch = 2.5
 path = 'contracts/VotingToken.clar'
 clarity_version = 2
 epoch = 2.5
+
+[contracts.QuadraticVoting]
+path = 'contracts/QuadraticVoting.clar'
+clarity_version = 3
+epoch = 3.0
 [repl.analysis]
 passes = ['check_checker']
 
