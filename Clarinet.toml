@@ -34,6 +34,11 @@ epoch = 3.0
 path = 'contracts/ReputationGovernance.clar'
 clarity_version = 3
 epoch = 3.0
+
+[contracts.VoteAuditTrail]
+path = 'contracts/VoteAuditTrail.clar'
+clarity_version = 3
+epoch = 3.0
 [repl.analysis]
 passes = ['check_checker']
 
